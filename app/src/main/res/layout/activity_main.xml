@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -8,91 +9,122 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
         android:layout_gravity="center"
-        android:gravity="center_horizontal">
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:padding="16dp">
 
         <SeekBar
             android:id="@+id/seek_bar_sample_rate"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
             android:indeterminate="false"
-            android:max="16000"
-            android:layout_marginTop="20dp"/>
+            android:max="16000" />
 
         <TextView
             android:id="@+id/text_view_seek_bar_sample_rate_label"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            tools:text="8000hz" />
 
         <SeekBar
             android:id="@+id/seek_bar_frame_size"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
             android:indeterminate="false"
-            android:max="160"
-            android:layout_marginTop="20dp"/>
+            android:max="160" />
 
         <TextView
             android:id="@+id/text_view_seek_bar_frame_size_label"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            tools:text="160" />
 
         <SeekBar
             android:id="@+id/seek_bar_aggressive_mode"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
             android:indeterminate="false"
-            android:max="4"
-            android:layout_marginTop="20dp"/>
+            android:max="4" />
 
         <TextView
             android:id="@+id/text_view_seek_bar_aggressive_mode_label"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            tools:text="4" />
 
         <SeekBar
             android:id="@+id/seek_bar_echo_length"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
             android:indeterminate="false"
-            android:max="500"
-            android:layout_marginTop="20dp"/>
+            android:max="500" />
 
         <TextView
             android:id="@+id/text_view_seek_bar_echo_length_label"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            tools:text="20ms" />
 
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_gravity="center"
-            android:layout_marginTop="20dp">
+            android:layout_marginTop="10dp">
 
             <Button
                 android:id="@+id/playBtn"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="play"
-                android:layout_centerInParent="true"/>
+                android:layout_centerInParent="true"
+                android:text="play" />
 
             <Button
                 android:id="@+id/stopBtn"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_centerInParent="true"
                 android:text="stop"
-                android:visibility="gone"
-                android:layout_centerInParent="true"/>
+                android:visibility="gone" />
         </RelativeLayout>
 
-        <Switch
-            android:id="@+id/switch_aecm"
+        <TextView
+            android:id="@+id/text_view_aec_mode_label"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="AECM"
-            android:layout_marginTop="20dp"
-            android:switchPadding="5dp"/>
+            android:layout_marginTop="10dp"
+            android:text="AEC Mode:"
+            android:textStyle="bold" />
+
+        <RadioGroup
+            android:id="@+id/radio_group_aec"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/radio_aec_none"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true"
+                android:text="Disable" />
+
+            <RadioButton
+                android:id="@+id/radio_aec_lib"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="libaecm" />
+
+            <RadioButton
+                android:id="@+id/radio_aec_android"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Android AEC" />
+
+        </RadioGroup>
     </LinearLayout>
 </FrameLayout>

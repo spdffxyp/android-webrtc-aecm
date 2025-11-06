@@ -2,22 +2,35 @@ package ru.theeasiestway.aecm;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.media.audiofx.AcousticEchoCanceler;
 import android.os.Build;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.annotation.RequiresApi;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.RadioGroup;
 import android.widget.SeekBar;
-import android.widget.Switch;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import ru.theeasiestway.aecm.voice.VoicePlayer;
 import ru.theeasiestway.aecm.voice.VoiceRecorder;
 import ru.theeasiestway.libaecm.AEC;
 
 public class MainActivity extends AppCompatActivity {
+
+    private final String TAG = "AECM_MainActivity";
+
+    private enum AecMode {
+        NONE,
+        LIB_AECM,
+        ANDROID_AEC
+    }
+
+    private AecMode currentAecMode = AecMode.NONE;
 
     private int SAMPLE_RATE = 8000;
     private int FRAME_SIZE = 160;
@@ -31,19 +44,20 @@ public class MainActivity extends AppCompatActivity {
     private TextView textViewSeekBarAggressiveMode;
     private SeekBar seekBarEchoLength;
     private TextView textViewSeekBarEchoLength;
-    private AEC aec = new AEC();
+
+    private AEC aec;
+    private AcousticEchoCanceler androidAec;
+
     private VoiceRecorder voiceRecorder;
     private VoicePlayer voicePlayer;
-    private boolean stop;
-    private boolean enableAecm;
+    private volatile boolean stop;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        voiceRecorder = new VoiceRecorder();
-        voicePlayer = new VoicePlayer();
+        aec = new AEC();
 
         playBtn = findViewById(R.id.playBtn);
         playBtn.setOnClickListener(v -> { if (hasRecAudioPermission()) startPlay(); });
@@ -55,8 +69,16 @@ public class MainActivity extends AppCompatActivity {
             stop();
         });
 
-        Switch switchAecm = findViewById(R.id.switch_aecm);
-        switchAecm.setOnCheckedChangeListener((buttonView, isChecked) -> enableAecm = isChecked);
+        RadioGroup radioGroupAec = findViewById(R.id.radio_group_aec);
+        radioGroupAec.setOnCheckedChangeListener((group, checkedId) -> {
+            if (checkedId == R.id.radio_aec_none) {
+                currentAecMode = AecMode.NONE;
+            } else if (checkedId == R.id.radio_aec_lib) {
+                currentAecMode = AecMode.LIB_AECM;
+            } else if (checkedId == R.id.radio_aec_android) {
+                currentAecMode = AecMode.ANDROID_AEC;
+            }
+        });
 
         textViewSeekBarSampleRate = findViewById(R.id.text_view_seek_bar_sample_rate_label);
         seekBarSampleRate = findViewById(R.id.seek_bar_sample_rate);
@@ -64,14 +86,14 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 if (progress <= 8000) {
-                    progress = 0;
+                    progress = 8000; // Let's set a floor value
                     seekBar.setProgress(progress);
                 }
-                if (progress > 8000) {
+                if (progress > 8000 && progress <= 16000) {
                     progress = 16000;
                     seekBar.setProgress(progress);
                 }
-                String s = progress == 0 ? "8000hz" : progress + "hz";
+                String s = progress + "hz";
                 textViewSeekBarSampleRate.setText(s);
             }
 
@@ -80,8 +102,7 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) {
-                int progress = seekBar.getProgress();
-                SAMPLE_RATE = progress == 0 ? 8000 : progress;
+                SAMPLE_RATE = seekBar.getProgress() <= 8000 ? 8000 : 16000;
             }
         });
         seekBarSampleRate.setProgress(SAMPLE_RATE);
@@ -92,14 +113,14 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 if (progress <= 80) {
-                    progress = 0;
+                    progress = 80;
                     seekBar.setProgress(progress);
                 }
                 if (progress > 80) {
                     progress = 160;
                     seekBar.setProgress(160);
                 }
-                String s = progress == 0 ? "80" : progress + "";
+                String s = progress + "";
                 textViewSeekBarFrameSizeLabel.setText(s);
             }
 
@@ -108,8 +129,7 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) {
-                int progress = seekBar.getProgress();
-                FRAME_SIZE = progress == 0 ? 80 : progress;
+                FRAME_SIZE = seekBar.getProgress() <= 80 ? 80 : 160;
             }
         });
         seekBarFrameSize.setProgress(FRAME_SIZE);
@@ -170,22 +190,76 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == 1 && permissions[0].equals(Manifest.permission.RECORD_AUDIO)) startPlay();
+        if (requestCode == 1 && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            startPlay();
+        }
     }
 
     private void play() {
-        if (enableAecm) aec.setSampFreq(seekBarSampleRate.getProgress() == 0 ? AEC.SamplingFrequency.FS_8000Hz : AEC.SamplingFrequency.FS_16000Hz);
-        if (enableAecm) aec.setAecmMode(getAggressiveMode());
-        voiceRecorder.start(SAMPLE_RATE, FRAME_SIZE);
-        voicePlayer.start(SAMPLE_RATE);
         stop = false;
+
+        // 1. 创建并启动 VoiceRecorder
+        voiceRecorder = new VoiceRecorder();
+        voiceRecorder.start(SAMPLE_RATE, FRAME_SIZE); // 使用修改后的 start 方法
+
+        // 2. 从 VoiceRecorder 获取 Audio Session ID
+        int audioSessionId = voiceRecorder.getAudioSessionId();
+        if (audioSessionId == -1) {
+            Log.e(TAG, "Failed to get Audio Session ID from VoiceRecorder.");
+            Toast.makeText(this, "Recorder init failed", Toast.LENGTH_SHORT).show();
+            // 清理并返回
+            stop();
+            playBtn.setVisibility(View.VISIBLE);
+            stopBtn.setVisibility(View.GONE);
+            return;
+        }
+        Log.d(TAG, "Audio Session ID from Recorder: " + audioSessionId);
+
+        // 3. 创建并启动 VoicePlayer，传入获取到的 session ID
+        voicePlayer = new VoicePlayer();
+        voicePlayer.start(SAMPLE_RATE, audioSessionId); // 使用修改后的 start 方法
+
+        // 4. 根据模式，使用同一个 session ID 初始化 AEC
+        switch (currentAecMode) {
+            case LIB_AECM:
+                aec.setSampFreq(SAMPLE_RATE == 8000 ? AEC.SamplingFrequency.FS_8000Hz : AEC.SamplingFrequency.FS_16000Hz);
+                aec.setAecmMode(getAggressiveMode());
+                Log.d(TAG, "Using libaecm for echo cancellation.");
+                break;
+            case ANDROID_AEC:
+                if (AcousticEchoCanceler.isAvailable()) {
+                    androidAec = AcousticEchoCanceler.create(audioSessionId); // <-- 使用正确的 session ID
+                    if (androidAec != null) {
+                        androidAec.setEnabled(true);
+                        Log.d(TAG, "Android AcousticEchoCanceler created and enabled. Status: " + androidAec.getEnabled());
+                    } else {
+                        Log.e(TAG, "Failed to create Android AcousticEchoCanceler.");
+                        Toast.makeText(this, "Failed to create Android AEC", Toast.LENGTH_SHORT).show();
+                    }
+                } else {
+                    Log.w(TAG, "Android AcousticEchoCanceler is not available on this device.");
+                    Toast.makeText(this, "Android AEC not available", Toast.LENGTH_SHORT).show();
+                }
+                break;
+            case NONE:
+                Log.d(TAG, "AEC is disabled.");
+                break;
+        }
+
+        // 5. 启动处理线程
         new Thread(() -> {
             while (!stop) {
                 short[] frame = voiceRecorder.frame();
-                if (enableAecm) aec.farendBuffer(frame, FRAME_SIZE);
-                short[] resultFrame = new short[FRAME_SIZE];
-                if (enableAecm) resultFrame = aec.echoCancellation(frame, null, FRAME_SIZE, seekBarEchoLength.getProgress());
-                voicePlayer.write(enableAecm ? resultFrame : frame);
+
+                if (currentAecMode == AecMode.LIB_AECM) {
+                    aec.farendBuffer(frame, FRAME_SIZE);
+                    short[] resultFrame = aec.echoCancellation(frame, null, FRAME_SIZE, seekBarEchoLength.getProgress());
+                    voicePlayer.write(resultFrame);
+                } else {
+                    // 对于 Android AEC，你不需要做任何处理，系统会自动处理
+                    // 对于 NONE 模式，直接播放录制的数据
+                    voicePlayer.write(frame);
+                }
             }
         }).start();
     }
@@ -209,14 +283,32 @@ public class MainActivity extends AppCompatActivity {
 
     private void stop() {
         stop = true;
-        voiceRecorder.release();
-        voicePlayer.stopPlaying();
+        if (voiceRecorder != null) {
+            voiceRecorder.stop();
+            voiceRecorder.release();
+            voiceRecorder = null;
+        }
+
+        if (voicePlayer != null) {
+            voicePlayer.stopPlaying();
+            voicePlayer.release();
+            voicePlayer = null;
+        }
+
+        if (androidAec != null) {
+            androidAec.setEnabled(false);
+            androidAec.release();
+            androidAec = null;
+            Log.d(TAG, "Android AcousticEchoCanceler released.");
+        }
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         stop();
-        aec.close(); // completely destroys aecm instance, to continue work you need to create a new instance
+        if (aec != null) {
+            aec.close();
+        }
     }
 }
